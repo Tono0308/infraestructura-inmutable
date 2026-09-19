@@ -47,3 +47,51 @@ Todo el ciclo de vida —construcción de la imagen, despliegue de infraestructu
 ## 🏗️ Arquitectura Propuesta
 
 El siguiente diagrama resume la solución: desde el push a Git, pasando por la construcción y validación de la AMI, hasta el despliegue en AWS y el monitoreo continuo, incluyendo la detección de drift como proceso paralelo.
+
+┌─────────────────────────────────────────────────────────────────────┐
+│ REPOSITORIO GIT │
+│ (fuente única de verdad) │
+└──────────────────────────────┬──────────────────────────────────────┘
+│
+▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ GITHUB ACTIONS - GitOps │
+│ ┌──────────────┐ ┌──────────────┐ ┌────────────────────┐ │
+│ │ ami-build │ │ infra-deploy │ │ instance-refresh │ │
+│ │ build, test │ │ plan→apply │ │ rolling update │ │
+│ └──────┬───────┘ └──────┬───────┘ └─────────┬──────────┘ │
+└─────────┼─────────────────┼────────────────────┼────────────────────┘
+│ │ │
+▼ ▼ ▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ INFRAESTRUCTURA INMUTABLE │
+│ (cada cambio = nueva AMI = reemplazo completo) │
+└──────────────────────────────┬──────────────────────────────────────┘
+│
+▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ AMI Dorada → SSM Parameter Store → Launch Template → ASG │
+│ (Goss/InSpec) (guarda AMI ID) (usa AMI vigente) │
+└──────────────────────────────┬──────────────────────────────────────┘
+│
+▼
+┌─────────────────────────────────────────────────────────────────────┐
+│ VPC - INFRAESTRUCTURA EN AWS │
+│ ┌──────┐ ┌──────────────────────────────────────────────┐ │
+│ │ ALB │───▶│ Auto Scaling Group (EC2 x3) │ │
+│ └──────┘ └──────────────────────────────────────────────┘ │
+│ │ │ │
+│ ▼ ▼ │
+│ ┌──────────┐ ┌──────────────┐ ┌──────────────┐ │
+│ │ IAM Role │ │ CloudWatch │──▶│ SNS Alert │ │
+│ │ SSM only │ │ Dashboard │ │ unhealthy>0 │ │
+│ └──────────┘ └──────────────┘ └──────────────┘ │
+└─────────────────────────────────────────────────────────────────────┘
+▲
+│
+┌─────────────────────┐
+│ DRIFT DETECTION │
+│ (cron diario) │
+│ terraform plan │
+│ → Issue en GitHub │
+└─────────────────────┘

@@ -30,9 +30,6 @@ Todo el ciclo de vida —construcción de la imagen, despliegue de infraestructu
 - Juan J. Martínez
 - Gabriel Antonio González Puello
 
-**NRC:** 2724
-**Fecha:** 11/09/2026
-
 ---
 
 ## 🎯 Objetivos de Aprendizaje

@@ -5,7 +5,7 @@
 
 ---
 
-## 📋 Descripción
+## Descripción
 
 Este proyecto implementa, de punta a punta, un modelo de **infraestructura inmutable** gestionado bajo el paradigma **GitOps** sobre **Amazon Web Services (AWS)**.
 
@@ -23,7 +23,7 @@ Todo el ciclo de vida —construcción de la imagen, despliegue de infraestructu
 
 ---
 
-## 👥 Integrantes
+## Integrantes
 
 - Keren Saray Subiroz Galvan
 - Mariana Oliver Palis
@@ -32,7 +32,7 @@ Todo el ciclo de vida —construcción de la imagen, despliegue de infraestructu
 
 ---
 
-## 🎯 Objetivos de Aprendizaje
+## Objetivos de Aprendizaje
 
 - Entender y aplicar el paradigma de **infraestructura inmutable** frente al modelo mutable tradicional.
 - Usar **HashiCorp Packer** para construir **AMIs doradas (Golden AMIs)** de forma automatizada.
@@ -44,7 +44,7 @@ Todo el ciclo de vida —construcción de la imagen, despliegue de infraestructu
 
 ---
 
-## 🏗️ Arquitectura Propuesta
+## Arquitectura Propuesta
 
 El siguiente diagrama resume la solución: desde el push a Git, pasando por la construcción y validación de la AMI, hasta el despliegue en AWS y el monitoreo continuo, incluyendo la detección de drift como proceso paralelo.
 

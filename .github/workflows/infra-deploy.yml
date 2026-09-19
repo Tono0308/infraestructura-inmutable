@@ -1,4 +1,4 @@
-name: Terraform Deploy
+name: Infra Deploy
 
 on:
   push:
@@ -6,10 +6,6 @@ on:
       - main
     paths:
       - 'terraform/**'
-  workflow_run:
-    workflows: ["Packer Build AMI"]
-    types:
-      - completed
   workflow_dispatch:
 
 permissions:
@@ -17,25 +13,22 @@ permissions:
   contents: read
 
 jobs:
-  terraform:
+  terraform-deploy:
     name: Terraform Plan & Apply
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
 
     steps:
       - name: Checkout del repositorio
         uses: actions/checkout@v4
 
-      - name: Configurar credenciales de AWS via OIDC
+      - name: Autenticación AWS via OIDC
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Configurar HashiCorp Terraform
+      - name: Configurar Terraform
         uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 'latest'
 
       - name: Terraform Init & Validate
         run: |
@@ -49,7 +42,7 @@ jobs:
           terraform plan -out=tfplan
 
       - name: Terraform Apply
-        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        if: github.ref == 'refs/heads/main'
         run: |
           cd terraform
           terraform apply -auto-approve tfplan

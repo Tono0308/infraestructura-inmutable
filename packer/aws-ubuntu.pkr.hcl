@@ -16,13 +16,32 @@ variable "region" {
   default = "us-east-1"
 }
 
+# Commit que dispara el build (lo pasa el pipeline con -var)
+variable "git_commit" {
+  type    = string
+  default = "local-build"
+}
+
+# Versión de goss fijada a propósito: "latest" apunta a v0.4.10, que no publica
+# el binario goss-linux-amd64 (por eso la descarga daba 404).
+variable "goss_version" {
+  type    = string
+  default = "v0.4.9"
+}
+
+# ID de la ejecución de GitHub Actions (lo pasa el pipeline con -var).
+# Sirve para encontrar y terminar instancias huérfanas si un build se cancela.
+variable "run_id" {
+  type    = string
+  default = "local"
+}
+
 source "amazon-ebs" "ubuntu" {
   ami_name      = "mi-app-ubuntu-{{timestamp}}"
   instance_type = "t3.micro"
   region        = var.region
   ssh_username  = "ubuntu"
 
-  # Busca la AMI oficial más reciente de Ubuntu 22.04 proporcionada por Canonical
   source_ami_filter {
     filters = {
       name                = "ubuntu/images/hvm-ssd/ubuntu-jammy-22.04-amd64-server-*"
@@ -32,14 +51,69 @@ source "amazon-ebs" "ubuntu" {
     most_recent = true
     owners      = ["099720109477"]
   }
+
+  # Tags que se le aplican a la AMI construida (Exigido en Sección 4.1)
+  tags = {
+    Name        = "Golden-AMI-Ubuntu"
+    Version     = "1.0.0"
+    BuildDate   = "{{timestamp}}"
+    GitCommit   = var.git_commit
+    Environment = "Production"
+    ManagedBy   = "Packer"
+  }
+
+  # Tags de la instancia temporal del build (facilitan detectar instancias huérfanas)
+  run_tags = {
+    Name        = "Packer Builder"
+    ManagedBy   = "Packer"
+    PackerRunId = var.run_id
+  }
 }
 
 build {
   sources = ["source.amazon-ebs.ubuntu"]
 
+  # 1. Configuración con Ansible
   provisioner "ansible" {
-    playbook_file = "../ansible/playbook.yml"
+    playbook_file = "${path.root}/../ansible/playbook.yml"
     user          = "ubuntu"
-    # Packer mapeará automáticamente la IP temporal al host "default" de Ansible
+
+    # Si el log muestra errores de scp/sftp ("Failed to transfer file",
+    # "Connection closed") con el OpenSSH 9.x del runner, descomenta esto:
+    # extra_arguments = ["--scp-extra-args", "'-O'"]
+  }
+
+  # 2. Pruebas automatizadas con Goss
+  provisioner "shell" {
+    inline = [
+      "curl -fsSL https://github.com/goss-org/goss/releases/download/${var.goss_version}/goss-linux-amd64 -o /tmp/goss",
+      "chmod +x /tmp/goss"
+    ]
+  }
+
+  provisioner "file" {
+    source      = "${path.root}/goss/goss.yml"
+    destination = "/tmp/goss.yml"
+  }
+
+  provisioner "shell" {
+    inline = [
+      "/tmp/goss -g /tmp/goss.yml validate",
+      "rm -f /tmp/goss /tmp/goss.yml"
+    ]
+  }
+
+  # 3. Cleanup de la instancia antes de sellarla (Exigido en Sección 4.1)
+  provisioner "shell" {
+    inline = [
+      "sudo apt-get clean",
+      "sudo rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*",
+      "sudo rm -f /root/.ssh/authorized_keys /home/ubuntu/.ssh/authorized_keys"
+    ]
+  }
+
+  # 4. Genera manifest.json con el ID de la AMI (lo lee el workflow)
+  post-processor "manifest" {
+    output = "manifest.json"
   }
 }

@@ -1,0 +1,25 @@
+---
+- name: Aprovisionar imagen inmutable
+  hosts: default
+  become: true # Ejecutar como root
+  
+  tasks:
+    - name: Actualizar caché de paquetes apt
+      apt:
+        update_cache: yes
+        cache_valid_time: 3600
+
+    - name: Instalar dependencias del sistema y servidor web
+      apt:
+        name:
+          - curl
+          - git
+          - unzip
+          - nginx
+        state: present
+
+    - name: Habilitar el servicio Nginx para que arranque al inicio
+      systemd:
+        name: nginx
+        enabled: yes
+        state: started

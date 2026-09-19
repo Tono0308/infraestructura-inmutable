@@ -12,10 +12,24 @@ permissions:
   id-token: write
   contents: read
 
+# Nunca dos applies a la vez sobre el mismo state
+concurrency:
+  group: terraform-deploy
+  cancel-in-progress: false
+
 jobs:
   terraform-deploy:
     name: Terraform Plan & Apply
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Opcional: descomenta para exigir aprobación manual antes del apply.
+    # Requiere crear el environment "production" con reviewers en
+    # Settings > Environments del repo (tu trust policy con ":*" ya lo cubre).
+    # environment: production
+
+    defaults:
+      run:
+        working-directory: terraform
 
     steps:
       - name: Checkout del repositorio
@@ -32,17 +46,12 @@ jobs:
 
       - name: Terraform Init & Validate
         run: |
-          cd terraform
-          terraform init
+          terraform init -input=false
           terraform validate
 
       - name: Terraform Plan
-        run: |
-          cd terraform
-          terraform plan -out=tfplan
+        run: terraform plan -input=false -out=tfplan
 
       - name: Terraform Apply
         if: github.ref == 'refs/heads/main'
-        run: |
-          cd terraform
-          terraform apply -auto-approve tfplan
+        run: terraform apply -input=false -auto-approve tfplan

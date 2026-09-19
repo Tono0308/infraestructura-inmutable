@@ -11,11 +11,21 @@ permissions:
   id-token: write
   contents: read
 
+concurrency:
+  group: instance-refresh
+  cancel-in-progress: false
+
 jobs:
   refresh-asg:
     name: Trigger ASG Rolling Update
     runs-on: ubuntu-latest
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
+    timeout-minutes: 15
+    # Solo refresca el ASG si el build fue exitoso Y vino de main
+    # (así una rama de pruebas como JuanFeatures no reemplaza tus instancias).
+    if: >-
+      ${{ github.event_name != 'workflow_run' ||
+          (github.event.workflow_run.conclusion == 'success' &&
+           github.event.workflow_run.head_branch == 'main') }}
 
     steps:
       - name: Autenticación AWS via OIDC
@@ -26,7 +36,9 @@ jobs:
 
       - name: Iniciar Instance Refresh en AWS CLI
         run: |
-          # Reemplaza 'mi-app-asg' por el nombre final de tu Auto Scaling Group
+          # Reemplaza 'mi-app-asg' por el nombre final de tu Auto Scaling Group.
+          # El launch template del ASG debe usar la imagen
+          # "resolve:ssm:/gitops/ami/latest_id" para tomar la AMI nueva.
           aws autoscaling start-instance-refresh \
             --auto-scaling-group-name mi-app-asg \
             --preferences '{"MinHealthyPercentage": 50, "InstanceWarmup": 120}'

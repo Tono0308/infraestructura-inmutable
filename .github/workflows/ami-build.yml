@@ -14,10 +14,16 @@ permissions:
   id-token: write
   contents: read
 
+# Evita dos builds simultáneos de la misma rama (cada uno cuesta dinero)
+concurrency:
+  group: ami-build-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build-and-test-ami:
     name: Build, Test with Goss & Update SSM
     runs-on: ubuntu-latest
+    timeout-minutes: 45
 
     steps:
       - name: Checkout del repositorio
@@ -40,24 +46,68 @@ jobs:
           sudo apt install -y ansible
 
       - name: Packer Init & Validate
+        working-directory: packer
+        env:
+          # Evita el rate limit de la API de GitHub al descargar plugins
+          PACKER_GITHUB_API_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          cd packer
           packer init aws-ubuntu.pkr.hcl
-          packer validate aws-ubuntu.pkr.hcl
+          packer validate \
+            -var "region=${AWS_REGION}" \
+            -var "git_commit=${GITHUB_SHA}" \
+            -var "run_id=${GITHUB_RUN_ID}" \
+            aws-ubuntu.pkr.hcl
 
-      - name: Build AMI con Packer y Validar con Goss
-        id: packer
+      - name: Build AMI con Packer y validar con Goss
+        working-directory: packer
         run: |
-          cd packer
-          # Captura el ID de la AMI desde la salida del build
-          AMI_ID=$(packer build -machine-readable aws-ubuntu.pkr.hcl | awk -F, '$0 ~/artifact,0,id/ {print $6}' | cut -d':' -f2)
-          echo "AMI_ID=$AMI_ID" >> $GITHUB_ENV
+          packer build -color=false \
+            -var "region=${AWS_REGION}" \
+            -var "git_commit=${GITHUB_SHA}" \
+            -var "run_id=${GITHUB_RUN_ID}" \
+            aws-ubuntu.pkr.hcl
+
+      - name: Capturar ID de la AMI
+        shell: bash
+        run: |
+          AMI_ID=$(jq -r '.builds[-1].artifact_id' packer/manifest.json | cut -d: -f2)
+          if [[ ! "$AMI_ID" =~ ^ami-[0-9a-f]+$ ]]; then
+            echo "::error::No se pudo obtener un ID de AMI válido (valor: '$AMI_ID'). Revisa el log del build."
+            exit 1
+          fi
+          echo "AMI_ID=$AMI_ID" >> "$GITHUB_ENV"
           echo "Nueva Golden AMI creada: $AMI_ID"
 
       - name: Actualizar SSM Parameter Store
         run: |
           aws ssm put-parameter \
             --name "/gitops/ami/latest_id" \
-            --value "${{ env.AMI_ID }}" \
+            --value "$AMI_ID" \
             --type "String" \
             --overwrite
+
+      - name: Resumen
+        run: |
+          {
+            echo "### Golden AMI creada"
+            echo "- AMI: \`$AMI_ID\`"
+            echo "- Commit: \`${GITHUB_SHA}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Si el build falla o se cancela, termina cualquier instancia temporal
+      # de esta ejecución para que no quede cobrando.
+      - name: Limpiar instancias huérfanas de Packer
+        if: cancelled() || failure()
+        continue-on-error: true
+        run: |
+          IDS=$(aws ec2 describe-instances \
+            --filters "Name=tag:PackerRunId,Values=${GITHUB_RUN_ID}" \
+                      "Name=instance-state-name,Values=pending,running,stopping,stopped" \
+            --query "Reservations[].Instances[].InstanceId" \
+            --output text)
+          if [ -n "$IDS" ]; then
+            echo "Terminando instancias huérfanas: $IDS"
+            aws ec2 terminate-instances --instance-ids $IDS
+          else
+            echo "No hay instancias huérfanas."
+          fi

@@ -16,10 +16,17 @@ variable "region" {
   default = "us-east-1"
 }
 
-# Variable para registrar el commit desde el pipeline de GitHub Actions
+# Commit que dispara el build (lo pasa el pipeline con -var)
 variable "git_commit" {
   type    = string
   default = "local-build"
+}
+
+# ID de la ejecución de GitHub Actions (lo pasa el pipeline con -var).
+# Sirve para encontrar y terminar instancias huérfanas si un build se cancela.
+variable "run_id" {
+  type    = string
+  default = "local"
 }
 
 source "amazon-ebs" "ubuntu" {
@@ -47,6 +54,13 @@ source "amazon-ebs" "ubuntu" {
     Environment = "Production"
     ManagedBy   = "Packer"
   }
+
+  # Tags de la instancia temporal del build (facilitan detectar instancias huérfanas)
+  run_tags = {
+    Name        = "Packer Builder"
+    ManagedBy   = "Packer"
+    PackerRunId = var.run_id
+  }
 }
 
 build {
@@ -54,20 +68,24 @@ build {
 
   # 1. Configuración con Ansible
   provisioner "ansible" {
-    playbook_file = "../ansible/playbook.yml"
+    playbook_file = "${path.root}/../ansible/playbook.yml"
     user          = "ubuntu"
+
+    # Si el log muestra errores de scp/sftp ("Failed to transfer file",
+    # "Connection closed") con el OpenSSH 9.x del runner, descomenta esto:
+    # extra_arguments = ["--scp-extra-args", "'-O'"]
   }
 
   # 2. Pruebas automatizadas con Goss
   provisioner "shell" {
     inline = [
-      "curl -L https://github.com/aelsabbahy/goss/releases/latest/download/goss-linux-amd64 -o /tmp/goss",
+      "curl -fsSL https://github.com/aelsabbahy/goss/releases/latest/download/goss-linux-amd64 -o /tmp/goss",
       "chmod +x /tmp/goss"
     ]
   }
 
   provisioner "file" {
-    source      = "goss/goss.yml"
+    source      = "${path.root}/goss/goss.yml"
     destination = "/tmp/goss.yml"
   }
 
@@ -85,5 +103,10 @@ build {
       "sudo rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*",
       "sudo rm -f /root/.ssh/authorized_keys /home/ubuntu/.ssh/authorized_keys"
     ]
+  }
+
+  # 4. Genera manifest.json con el ID de la AMI (lo lee el workflow)
+  post-processor "manifest" {
+    output = "manifest.json"
   }
 }

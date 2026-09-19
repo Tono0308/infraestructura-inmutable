@@ -67,14 +67,14 @@ build {
   }
 
   provisioner "file" {
-    source      = "goss/goss.yaml"
-    destination = "/tmp/goss.yaml"
+    source      = "goss/goss.yml"
+    destination = "/tmp/goss.yml"
   }
 
   provisioner "shell" {
     inline = [
-      "/tmp/goss -g /tmp/goss.yaml validate",
-      "rm -f /tmp/goss /tmp/goss.yaml"
+      "/tmp/goss -g /tmp/goss.yml validate",
+      "rm -f /tmp/goss /tmp/goss.yml"
     ]
   }
 

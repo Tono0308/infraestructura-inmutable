@@ -22,6 +22,13 @@ variable "git_commit" {
   default = "local-build"
 }
 
+# Versión de goss fijada a propósito: "latest" apunta a v0.4.10, que no publica
+# el binario goss-linux-amd64 (por eso la descarga daba 404).
+variable "goss_version" {
+  type    = string
+  default = "v0.4.9"
+}
+
 # ID de la ejecución de GitHub Actions (lo pasa el pipeline con -var).
 # Sirve para encontrar y terminar instancias huérfanas si un build se cancela.
 variable "run_id" {
@@ -79,7 +86,7 @@ build {
   # 2. Pruebas automatizadas con Goss
   provisioner "shell" {
     inline = [
-      "curl -fsSL https://github.com/aelsabbahy/goss/releases/latest/download/goss-linux-amd64 -o /tmp/goss",
+      "curl -fsSL https://github.com/goss-org/goss/releases/download/${var.goss_version}/goss-linux-amd64 -o /tmp/goss",
       "chmod +x /tmp/goss"
     ]
   }

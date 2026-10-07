@@ -1,0 +1,5 @@
+---
+# Versión de la app que se hornea en la AMI (la pasa Packer con -e app_version=...)
+app_version: "1.0.0"
+app_user: miapp
+app_dir: /opt/mi-app

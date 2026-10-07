@@ -10,3 +10,33 @@ service:
 process:
   nginx:
     running: true
+    enabled: true
+
+  mi-app:
+    enabled: true
+    running: true
+  amazon-cloudwatch-agent:
+    enabled: true
+process:
+  nginx:
+    running: true
+file:
+  /opt/mi-app/app.py:
+    exists: true
+  /etc/systemd/system/mi-app.service:
+    exists: true
+  /etc/nginx/sites-enabled/mi-app:
+    exists: true
+  /etc/nginx/sites-enabled/default:
+    exists: false
+  /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json:
+    exists: true
+http:
+  http://localhost/health:
+    status: 200
+    body:
+    - ok
+  http://localhost/:
+    status: 200
+  http://127.0.0.1:8080/health:
+    status: 200

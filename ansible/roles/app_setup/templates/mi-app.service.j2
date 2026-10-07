@@ -1,0 +1,17 @@
+[Unit]
+Description=Mi App (version {{ app_version }})
+After=network.target
+
+[Service]
+User={{ app_user }}
+Environment=APP_VERSION={{ app_version }}
+Environment=APP_PORT=8080
+ExecStart=/usr/bin/python3 {{ app_dir }}/app.py
+Restart=always
+RestartSec=2
+NoNewPrivileges=true
+ProtectSystem=full
+ProtectHome=true
+
+[Install]
+WantedBy=multi-user.target

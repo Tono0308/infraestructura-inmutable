@@ -23,3 +23,6 @@
         name: nginx
         enabled: yes
         state: started
+  
+  roles:
+    - app_setup

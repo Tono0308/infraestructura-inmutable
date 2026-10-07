@@ -1,0 +1,16 @@
+{
+  "agent": {
+    "metrics_collection_interval": 60,
+    "run_as_user": "root"
+  },
+  "metrics": {
+    "append_dimensions": {
+      "AutoScalingGroupName": "${aws:AutoScalingGroupName}"
+    },
+    "metrics_collected": {
+      "cpu":  { "measurement": ["cpu_usage_idle", "cpu_usage_user"], "totalcpu": true },
+      "mem":  { "measurement": ["mem_used_percent"] },
+      "disk": { "measurement": ["used_percent"], "resources": ["/"] }
+    }
+  }
+}

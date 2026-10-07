@@ -1,0 +1,11 @@
+---
+- name: Reiniciar mi-app
+  systemd:
+    name: mi-app
+    state: restarted
+    daemon_reload: true
+
+- name: Reiniciar nginx
+  systemd:
+    name: nginx
+    state: restarted

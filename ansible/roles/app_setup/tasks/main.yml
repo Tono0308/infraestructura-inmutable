@@ -1,0 +1,96 @@
+---
+# ---------- Aplicación ----------
+- name: Crear usuario de sistema para la app
+  user:
+    name: "{{ app_user }}"
+    system: true
+    shell: /usr/sbin/nologin
+    create_home: false
+
+- name: Crear directorio de la app
+  file:
+    path: "{{ app_dir }}"
+    state: directory
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Copiar el código de la app
+  copy:
+    src: app.py
+    dest: "{{ app_dir }}/app.py"
+    owner: root
+    group: root
+    mode: "0755"
+  notify: Reiniciar mi-app
+
+- name: Instalar el servicio systemd de la app
+  template:
+    src: mi-app.service.j2
+    dest: /etc/systemd/system/mi-app.service
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reiniciar mi-app
+
+- name: Habilitar e iniciar la app
+  systemd:
+    name: mi-app
+    enabled: true
+    state: started
+    daemon_reload: true
+
+# ---------- Nginx como reverse proxy ----------
+- name: Copiar configuración de Nginx
+  copy:
+    src: nginx-mi-app.conf
+    dest: /etc/nginx/sites-available/mi-app
+    owner: root
+    group: root
+    mode: "0644"
+  notify: Reiniciar nginx
+
+- name: Activar el sitio mi-app
+  file:
+    src: /etc/nginx/sites-available/mi-app
+    dest: /etc/nginx/sites-enabled/mi-app
+    state: link
+  notify: Reiniciar nginx
+
+- name: Desactivar el sitio por defecto de Nginx
+  file:
+    path: /etc/nginx/sites-enabled/default
+    state: absent
+  notify: Reiniciar nginx
+
+- name: Validar la configuración de Nginx
+  command: nginx -t
+  changed_when: false
+
+# ---------- CloudWatch Agent (observabilidad, sección 4.4) ----------
+- name: Instalar CloudWatch Agent
+  apt:
+    deb: https://amazoncloudwatch-agent.s3.amazonaws.com/ubuntu/amd64/latest/amazon-cloudwatch-agent.deb
+    state: present
+
+- name: Copiar configuración del CloudWatch Agent
+  copy:
+    src: amazon_cloudwatch_agent.json
+    dest: /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json
+    owner: root
+    group: root
+    mode: "0644"
+
+# En el build no hay IAM role, así que el agente no podrá publicar métricas aquí;
+# lo importante es que quede configurado y habilitado para cuando arranque en el ASG.
+- name: Cargar la configuración en el agente
+  command: >
+    /opt/aws/amazon-cloudwatch-agent/bin/amazon-cloudwatch-agent-ctl
+    -a fetch-config -m ec2
+    -c file:/opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json -s
+  changed_when: true
+
+- name: Habilitar el CloudWatch Agent al arrancar
+  systemd:
+    name: amazon-cloudwatch-agent
+    enabled: true

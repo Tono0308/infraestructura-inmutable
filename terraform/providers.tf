@@ -11,7 +11,7 @@ terraform {
   # Estado remoto: obligatorio porque el runner de GitHub Actions es efímero.
   # El bucket se crea UNA vez a mano (ver guía) y su nombre debe ser único global.
   backend "s3" {
-    bucket       = "CAMBIAR-por-el-nombre-de-su-bucket-tfstate"
+    bucket       = "mi-app-tfstate-200090082104"
     key          = "infraestructura-inmutable/terraform.tfstate"
     region       = "us-east-1"
     encrypt      = true

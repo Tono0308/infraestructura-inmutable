@@ -99,9 +99,12 @@ build {
   }
 
   provisioner "shell" {
+    execute_command = "sudo -E sh '{{ .Path }}'"
     inline = [
-      "sudo /tmp/goss -g /tmp/goss.yml validate",
-      "rm -f /tmp/goss /tmp/goss.yml"
+      "curl -L https://github.com/goss-org/goss/releases/download/${var.goss_version}/goss-linux-amd64 -o /usr/local/bin/goss",
+      "chmod +rx /usr/local/bin/goss",
+      "goss -g /tmp/goss.yml validate",
+      "rm -f /tmp/goss.yml"
     ]
   }
 

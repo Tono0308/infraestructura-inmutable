@@ -24,6 +24,11 @@ variable "git_commit" {
 
 # Versión de goss fijada a propósito: "latest" apunta a v0.4.10, que no publica
 # el binario goss-linux-amd64 (por eso la descarga daba 404).
+# Versión de la aplicación que se hornea en la AMI (tag Version + página web)
+variable "app_version" {
+  type    = string
+  default = "1.0.0"
+}
 variable "goss_version" {
   type    = string
   default = "v0.4.9"
@@ -55,7 +60,7 @@ source "amazon-ebs" "ubuntu" {
   # Tags que se le aplican a la AMI construida (Exigido en Sección 4.1)
   tags = {
     Name        = "Golden-AMI-Ubuntu"
-    Version     = "1.0.0"
+    Version     = var.app_version
     BuildDate   = "{{timestamp}}"
     GitCommit   = var.git_commit
     Environment = "Production"
@@ -72,23 +77,20 @@ source "amazon-ebs" "ubuntu" {
 
 build {
   sources = ["source.amazon-ebs.ubuntu"]
-
-  # 1. Configuración con Ansible
-  provisioner "ansible" {
-    playbook_file = "${path.root}/../ansible/playbook.yml"
-    user          = "ubuntu"
-
-    # Si el log muestra errores de scp/sftp ("Failed to transfer file",
-    # "Connection closed") con el OpenSSH 9.x del runner, descomenta esto:
-    # extra_arguments = ["--scp-extra-args", "'-O'"]
+    # 1. Dependencias base del sistema (script)
+  provisioner "shell" {
+    script = "${path.root}/scripts/setup.sh"
   }
 
-  # 2. Pruebas automatizadas con Goss
-  provisioner "shell" {
-    inline = [
-      "curl -fsSL https://github.com/goss-org/goss/releases/download/${var.goss_version}/goss-linux-amd64 -o /tmp/goss",
-      "chmod +x /tmp/goss"
-    ]
+  # 2. Configuración con Ansible (app + nginx + CloudWatch Agent)
+  provisioner "ansible" {
+    playbook_file   = "${path.root}/../ansible/playbook.yml"
+    user            = "ubuntu"
+    extra_arguments = ["-e", "app_version=${var.app_version}"]
+
+    # Si el log muestra errores de scp/sftp ("Failed to transfer file",
+    # "Connection closed") con el OpenSSH 9.x del runner, usa esto en su lugar:
+    # extra_arguments = ["-e", "app_version=${var.app_version}", "--scp-extra-args", "'-O'"]
   }
 
   provisioner "file" {
@@ -98,7 +100,7 @@ build {
 
   provisioner "shell" {
     inline = [
-      "/tmp/goss -g /tmp/goss.yml validate",
+      "sudo /tmp/goss -g /tmp/goss.yml validate",
       "rm -f /tmp/goss /tmp/goss.yml"
     ]
   }

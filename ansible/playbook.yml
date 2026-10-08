@@ -2,8 +2,8 @@
 - name: Aprovisionar imagen inmutable
   hosts: default
   become: true # Ejecutar como root
-  
-  tasks:
+
+  pre_tasks:
     - name: Actualizar caché de paquetes apt
       apt:
         update_cache: yes
@@ -16,6 +16,7 @@
           - git
           - unzip
           - nginx
+          - python3
         state: present
 
     - name: Habilitar el servicio Nginx para que arranque al inicio
@@ -23,6 +24,6 @@
         name: nginx
         enabled: yes
         state: started
-  
+
   roles:
     - app_setup

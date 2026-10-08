@@ -3,15 +3,14 @@ port:
     listening: true
     ip:
     - 0.0.0.0
+  tcp:8080:
+    listening: true
+    ip:
+    - 127.0.0.1
 service:
   nginx:
     enabled: true
     running: true
-process:
-  nginx:
-    running: true
-    enabled: true
-
   mi-app:
     enabled: true
     running: true

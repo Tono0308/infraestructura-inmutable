@@ -84,6 +84,7 @@ jobs:
             --name "/gitops/ami/latest_id" \
             --value "$AMI_ID" \
             --type "String" \
+            --data-type "aws:ec2:image" \
             --overwrite
 
       - name: Resumen

@@ -28,7 +28,7 @@ file:
     exists: true
   /etc/nginx/sites-enabled/default:
     exists: false
-  /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.json:
+  /opt/aws/amazon-cloudwatch-agent/etc/amazon-cloudwatch-agent.toml:
     exists: true
 http:
   http://localhost/health:

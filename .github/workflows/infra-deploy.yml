@@ -18,22 +18,31 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  terraform-deploy:
-    name: Terraform Plan & Apply
+  validate:
+    name: Validate
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-    # Opcional: descomenta para exigir aprobación manual antes del apply.
-    # Requiere crear el environment "production" con reviewers en
-    # Settings > Environments del repo (tu trust policy con ":*" ya lo cubre).
-    # environment: production
-
+    timeout-minutes: 10
     defaults:
       run:
         working-directory: terraform
-
     steps:
-      - name: Checkout del repositorio
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+      - name: Init (sin backend) y Validate
+        run: |
+          terraform init -backend=false -input=false
+          terraform validate
+
+  plan:
+    name: Plan
+    needs: validate
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
 
       - name: Autenticación AWS via OIDC
         uses: aws-actions/configure-aws-credentials@v4
@@ -41,17 +50,49 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Configurar Terraform
-        uses: hashicorp/setup-terraform@v3
+      - uses: hashicorp/setup-terraform@v3
 
-      - name: Terraform Init & Validate
+      - name: Terraform Init & Plan
         run: |
           terraform init -input=false
-          terraform validate
+          terraform plan -input=false -out=tfplan
 
-      - name: Terraform Plan
-        run: terraform plan -input=false -out=tfplan
+      - name: Guardar el plan para el apply
+        uses: actions/upload-artifact@v4
+        with:
+          name: tfplan
+          path: terraform/tfplan
+          retention-days: 3
 
-      - name: Terraform Apply
-        if: github.ref == 'refs/heads/main'
-        run: terraform apply -input=false -auto-approve tfplan
+  apply:
+    name: Apply (requiere aprobación)
+    needs: plan
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    # Aquí GitHub pausa el job hasta que un revisor apruebe
+    environment: production
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Autenticación AWS via OIDC
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Descargar el plan aprobado
+        uses: actions/download-artifact@v4
+        with:
+          name: tfplan
+          path: terraform
+
+      - name: Terraform Init & Apply
+        run: |
+          terraform init -input=false
+          terraform apply -input=false -auto-approve tfplan

@@ -6,6 +6,11 @@ on:
     types:
       - completed
   workflow_dispatch:
+    inputs:
+      ami_id:
+        description: 'ROLLBACK: ID de la AMI anterior (ej. ami-0abc123...). Vacío = usa la AMI vigente en SSM'
+        required: false
+        default: ''
 
 permissions:
   id-token: write
@@ -19,9 +24,8 @@ jobs:
   refresh-asg:
     name: Trigger ASG Rolling Update
     runs-on: ubuntu-latest
-    timeout-minutes: 15
-    # Solo refresca el ASG si el build fue exitoso Y vino de main
-    # (así una rama de pruebas como JuanFeatures no reemplaza tus instancias).
+    timeout-minutes: 20
+    # Solo refresca si el build fue exitoso Y vino de main
     if: >-
       ${{ github.event_name != 'workflow_run' ||
           (github.event.workflow_run.conclusion == 'success' &&
@@ -34,11 +38,60 @@ jobs:
           role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           aws-region: ${{ secrets.AWS_REGION }}
 
-      - name: Iniciar Instance Refresh en AWS CLI
+      # ---------- ROLLBACK (solo si se pasa un ami_id a mano) ----------
+      - name: Rollback - fijar la AMI anterior en SSM
+        if: ${{ github.event_name == 'workflow_dispatch' && inputs.ami_id != '' }}
+        env:
+          ROLLBACK_AMI: ${{ inputs.ami_id }}
         run: |
-          # Reemplaza 'mi-app-asg' por el nombre final de tu Auto Scaling Group.
-          # El launch template del ASG debe usar la imagen
-          # "resolve:ssm:/gitops/ami/latest_id" para tomar la AMI nueva.
-          aws autoscaling start-instance-refresh \
+          if [[ ! "$ROLLBACK_AMI" =~ ^ami-[0-9a-f]+$ ]]; then
+            echo "::error::'$ROLLBACK_AMI' no parece un ID de AMI válido"
+            exit 1
+          fi
+
+          # La AMI debe existir y estar disponible
+          STATE=$(aws ec2 describe-images --image-ids "$ROLLBACK_AMI" \
+                    --query 'Images[0].State' --output text)
+          if [ "$STATE" != "available" ]; then
+            echo "::error::La AMI $ROLLBACK_AMI no está disponible (estado: $STATE)"
+            exit 1
+          fi
+
+          aws ssm put-parameter \
+            --name "/gitops/ami/latest_id" \
+            --value "$ROLLBACK_AMI" \
+            --type "String" \
+            --data-type "aws:ec2:image" \
+            --overwrite
+
+          echo "### Rollback a \`$ROLLBACK_AMI\`" >> "$GITHUB_STEP_SUMMARY"
+
+      # ---------- Instance Refresh ----------
+      - name: Iniciar Instance Refresh
+        id: refresh
+        run: |
+          REFRESH_ID=$(aws autoscaling start-instance-refresh \
             --auto-scaling-group-name mi-app-asg \
-            --preferences '{"MinHealthyPercentage": 50, "InstanceWarmup": 120}'
+            --preferences '{"MinHealthyPercentage": 50, "InstanceWarmup": 120}' \
+            --query 'InstanceRefreshId' --output text)
+          echo "refresh_id=$REFRESH_ID" >> "$GITHUB_OUTPUT"
+          echo "Instance Refresh iniciado: $REFRESH_ID"
+
+      # Espera a que termine y muestra el tiempo (útil para el informe)
+      - name: Esperar a que termine el refresh
+        run: |
+          START=$(date +%s)
+          while true; do
+            STATUS=$(aws autoscaling describe-instance-refreshes \
+              --auto-scaling-group-name mi-app-asg \
+              --instance-refresh-ids "${{ steps.refresh.outputs.refresh_id }}" \
+              --query 'InstanceRefreshes[0].[Status,PercentageComplete]' --output text)
+            echo "Estado / % completado: $STATUS"
+            case "$STATUS" in
+              Successful*) break ;;
+              Failed*|Cancelled*|Cancelling*) echo "::error::El refresh terminó mal: $STATUS"; exit 1 ;;
+            esac
+            sleep 20
+          done
+          ELAPSED=$(( $(date +%s) - START ))
+          echo "### Refresh completado en ${ELAPSED}s" >> "$GITHUB_STEP_SUMMARY"

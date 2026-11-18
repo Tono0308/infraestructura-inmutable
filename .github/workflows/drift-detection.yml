@@ -1,0 +1,52 @@
+name: Drift Detection
+
+on:
+  schedule:
+    - cron: '0 11 * * *'   # diario, 6:00 a.m. Colombia
+  workflow_dispatch:
+
+permissions:
+  id-token: write
+  contents: read
+  issues: write
+
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: terraform
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_wrapper: false
+
+      - run: terraform init -input=false
+
+      - name: Terraform plan (solo lectura)
+        id: plan
+        run: |
+          set +e
+          terraform plan -input=false -lock=false -no-color -detailed-exitcode > plan.txt
+          echo "exitcode=$?" >> "$GITHUB_OUTPUT"
+
+      - name: Abrir Issue si hay drift
+        if: steps.plan.outputs.exitcode == '2'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh label create drift --color D93F0B --force || true
+          { echo '```'; head -c 60000 plan.txt; echo '```'; } > body.md
+          gh issue create --title "Drift detectado $(date -u +%F)" \
+            --label drift --body-file body.md
+
+      - name: Fallar si el plan dio error
+        if: steps.plan.outputs.exitcode == '1'
+        run: cat plan.txt && exit 1

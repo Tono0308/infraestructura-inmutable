@@ -27,7 +27,7 @@ variable "git_commit" {
 # Versión de la aplicación que se hornea en la AMI (tag Version + página web)
 variable "app_version" {
   type    = string
-  default = "1.0.0"
+  default = "2.0.0"
 }
 variable "goss_version" {
   type    = string
